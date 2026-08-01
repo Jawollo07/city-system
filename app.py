@@ -4,6 +4,7 @@ import sqlite3
 import asyncio
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, Header, HTTPException
+import uvicorn
 
 # Konfiguration
 API_TOKEN = os.getenv("API_TOKEN", "cxGXKxWkZBYNQQyx6wx&uq&Fpqgeyj*MaDEbE%Y#WiVRBM^!f*4r$8jf#g#3!%ig5^aKM!5CpeHpjR5Ap$8AgeLGhbq6Q2PkehT93bm4ay8VkuPbAV2Gz7YvFdKtyTSv")
@@ -131,6 +132,4 @@ def force_key_rotation(
         "message": f"Schlüssel für {network_name} wurde manuell rotiert und ist ab sofort aktiv."
     }
 if __name__ == "__main__":
-    import uvicorn
-    # Startet den Server auf http://127.0.0.1:8000
-    uvicorn.run("app:app", host="127.0.0.1", port=25560, reload=True)
+    uvicorn.run("app:app", host="0.0.0.0", port=25560, reload=True)
