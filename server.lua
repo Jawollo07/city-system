@@ -8,6 +8,19 @@ local PROTOCOL = "GEBAEUDE-1-SEC"
 local DB_SERVER_ID = 19
 local TIMEOUT = 3
 
+-- Fail-closed allowlist: set real IDs of admin.lua and sec_server.lua here.
+-- Do not include the Keller-Server or DB-Server IDs.
+local ADMIN_IDS = {
+    -- [20] = true, -- replace with the actual admin terminal ID
+    -- [21] = true, -- replace with the actual security terminal ID
+}
+local ADMIN_COMMANDS = {
+    SET_LOCKDOWN = true,
+    TOGGLE_FLOOR = true,
+    SET_CLEARANCE = true,
+    DB_SET_KEYCARD = true
+}
+
 -- ====================================================
 crypto.ensureRednet()
 
@@ -92,6 +105,11 @@ while true do
         else
             local cmd = payload.cmd or (payload.result and payload.result.cmd)
 
+            if ADMIN_COMMANDS[cmd] and not ADMIN_IDS[senderID] then
+                logToDB("ACCESS_DENIED", "Admin-Befehl " .. tostring(cmd) .. " von nicht freigegebener ID " .. tostring(senderID))
+                local denied = crypto.encrypt({ status = "DENIED", msg = "Computer-ID nicht für administrative Befehle freigegeben." })
+                if denied then rednet.send(senderID, denied, PROTOCOL) end
+            else
             -- ==================== COMMANDS ====================
 
             if cmd == "GET_FLOORS" then
@@ -112,26 +130,32 @@ while true do
                     local packed = crypto.encrypt({ status = "DENIED", msg = "LOCKDOWN! Gebäude ist abgeriegelt." })
                     if packed then rednet.send(senderID, packed, PROTOCOL) end
                 else
-                    -- Keycard + Etagen-Infos holen
-                    local cardReply = queryDB({ cmd = "DB_GET_KEYCARD", cardId = cardId })
-                    local userLevel = (cardReply and cardReply.level) or payload.userLevel or 0
-                    local cardOwner = (cardReply and cardReply.owner) or "Unbekannt"
-
-                    local dbReply = queryDB({ cmd = "DB_GET_FLOORS" })
-                    local target = dbReply and dbReply.etagen and dbReply.etagen[targetFloor]
-
+                    if type(targetFloor) ~= "number" or targetFloor ~= math.floor(targetFloor) then
+                        local packed = crypto.encrypt({ status = "DENIED", msg = "Ungültige Ziel-Etage." })
+                        if packed then rednet.send(senderID, packed, PROTOCOL) end
+                    else
+                    -- A card must exist and DB reads must succeed. Never trust a client-supplied level.
+                    local cardReply, cardErr = queryDB({ cmd = "DB_GET_KEYCARD", cardId = cardId })
+                    local dbReply, floorsErr = queryDB({ cmd = "DB_GET_FLOORS" })
+                    local target = dbReply and dbReply.status == "OK" and dbReply.etagen and dbReply.etagen[targetFloor]
                     local responsePayload
 
-                    if not target then
+                    if not cardReply or cardReply.status ~= "OK" or type(cardReply.level) ~= "number" then
+                        responsePayload = { status = "DENIED", msg = "Keycard ungültig oder Datenbank nicht verfügbar." }
+                        logToDB("ACCESS_DENIED", "Keycard-Prüfung fehlgeschlagen für ID " .. tostring(senderID) .. ": " .. tostring(cardErr))
+                    elseif not dbReply or dbReply.status ~= "OK" then
+                        responsePayload = { status = "ERROR", msg = "Etagen-Datenbank nicht verfügbar." }
+                        logToDB("ERROR", "Etagenabfrage fehlgeschlagen: " .. tostring(floorsErr))
+                    elseif not target then
                         responsePayload = { status = "DENIED", msg = "Ziel-Etage existiert nicht!" }
                     elseif target.locked then
                         logToDB("ACCESS_DENIED", string.format("Gesperrt: %s -> Etage %d", cardOwner, targetFloor))
                         responsePayload = { status = "DENIED", msg = "Etage ist derzeit gesperrt." }
-                    elseif userLevel < (target.clearance or 0) then
-                        logToDB("ACCESS_DENIED", string.format("Rechte fehlen: %s (Lvl %d) -> Etage %d", cardOwner, userLevel, targetFloor))
+                    elseif cardReply.level < (target.clearance or 0) then
+                        logToDB("ACCESS_DENIED", string.format("Rechte fehlen: %s (Lvl %d) -> Etage %d", tostring(cardReply.owner or "Unbekannt"), cardReply.level, targetFloor))
                         responsePayload = { status = "DENIED", msg = string.format("Keine Rechte! (Lvl %d nötig)", target.clearance or 0) }
                     else
-                        logToDB("ACCESS_GRANTED", string.format("Freigabe: %s (Lvl %d) -> Etage %d", cardOwner, userLevel, targetFloor))
+                        logToDB("ACCESS_GRANTED", string.format("Freigabe: %s (Lvl %d) -> Etage %d", tostring(cardReply.owner or "Unbekannt"), cardReply.level, targetFloor))
                         responsePayload = { status = "OK", msg = "Fahrt genehmigt!" }
 
                         if target.relayID then
@@ -181,6 +205,7 @@ while true do
                 local packed = crypto.encrypt({ status = "OK" })
                 if packed then rednet.send(senderID, packed, PROTOCOL) end
             end
+            end -- ADMIN_COMMANDS authorization gate
         end
     end
 end
