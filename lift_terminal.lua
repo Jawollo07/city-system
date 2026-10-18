@@ -5,7 +5,7 @@ local crypto = require("crypto")
 
 -- ================= CONFIGURATION ====================
 local PROTOCOL = "GEBAEUDE-1-SEC"
-local SERVER_ID = 18        -- ⚙️ Keller-Server ID
+local SERVER_ID = 29        -- ⚙️ Keller-Server ID
 
 -- ====================================================
 crypto.ensureRednet()

@@ -5,7 +5,7 @@ local crypto = require("crypto")
 
 -- ================= CONFIGURATION ====================
 local PROTOCOL = "GEBAEUDE-1-SEC"
-local SERVER_ID = 18 -- only accept relay triggers from the Keller-Server
+local SERVER_ID = 29 -- only accept relay triggers from the Keller-Server
 local FLOOR_ID = 0   -- configure per relay: 0=ground, 1=first floor, etc.
 local REDSTONE_SIDE = "bottom"
 local PULSE_TIME = 18

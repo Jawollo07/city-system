@@ -8,10 +8,15 @@ local crypto = {}
 ----------------------------------------------------
 -- KONFIGURATION
 ----------------------------------------------------
-local API_URL      = "https://mc-cc.mcjj.de/v1/keys/"
--- Rotate the previously committed token; configure a unique token per device.
-local API_TOKEN    = "REPLACE_WITH_ROTATED_PER_DEVICE_TOKEN"
+local API_URL      = "http://192.168.178.85:25559/v1/"
+-- Use the same secret configured as API_TOKEN on the KMS server and admin terminal.
+local API_TOKEN    = "tJkXzQUdhlDUQWNawBg-9n1COQzpttKuq66rOqCXJT3ja3s0VJIyI93HwdT_xzk6"
 local NETWORK_NAME = os.getComputerLabel() or "UNCONFIGURED_NETWORK"
+local DEBUG_MODE   = true
+
+crypto.API_TOKEN = API_TOKEN
+crypto.API_URL = API_URL
+crypto.NETWORK_NAME = NETWORK_NAME
 
 ----------------------------------------------------
 -- 1. SCHLÜSSEL-VERWALTUNG (HTTP API)
@@ -21,7 +26,7 @@ local function fetchKey()
         print("[Crypto] FEHLER: HTTP-API deaktiviert; unsicherer Fallback verweigert.")
         return nil
     end
-    if API_TOKEN == "" or API_TOKEN == "REPLACE_WITH_ROTATED_PER_DEVICE_TOKEN" then
+    if API_TOKEN == "" or API_TOKEN == "REPLACE_WITH_SHARED_API_TOKEN" then
         print("[Crypto] FEHLER: API-Token nicht konfiguriert.")
         return nil
     end
@@ -33,11 +38,7 @@ local function fetchKey()
         ["Accept"]        = "application/json"
     }
 
-    if not API_URL:match("^https://") then
-        print("[Crypto] FEHLER: Schlüssel-API muss HTTPS verwenden.")
-        return nil
-    end
-    local ok, response = pcall(http.get, API_URL .. NETWORK_NAME, headers)
+    local ok, response = pcall(http.get, API_URL .. "keys/" .. NETWORK_NAME, headers)
     if ok and response then
         local body = response.readAll()
         response.close()
@@ -51,8 +52,19 @@ local function fetchKey()
     return nil
 end
 
+local function debugSessionKey(key)
+    if DEBUG_MODE then
+        if type(key) == "string" then
+            print("[Crypto][DEBUG] Session Key: " .. key)
+        else
+            print("[Crypto][DEBUG] Session Key nicht verfügbar.")
+        end
+    end
+end
+
 -- Holt den Key beim Laden des Moduls und speichert ihn im RAM
 local SESSION_KEY = fetchKey()
+debugSessionKey(SESSION_KEY)
 
 local function requireSessionKey()
     if type(SESSION_KEY) ~= "string" or #SESSION_KEY < 16 then
@@ -182,6 +194,7 @@ function crypto.decrypt(packet)
         if packet.hmac == newExpectedHMAC then
             print("[Crypto] Key erfolgreich aktualisiert!")
             SESSION_KEY = newKey -- Neuen Key dauerhaft im RAM speichern
+            debugSessionKey(SESSION_KEY)
         else
             return nil, "Paket verworfen: HMAC auch mit neuem Key ungueltig! (Manipulation erkannt)"
         end

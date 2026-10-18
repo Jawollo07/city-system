@@ -16,9 +16,9 @@ local PROTOCOL  = "GEBAEUDE-1-SEC"
 local SERVER_ID = 18  -- ⚙️ Computer-ID deines Keller-Servers (server.lua)
 
 -- API KMS Konfiguration
--- Admin-only KMS token; keep this separate from the per-device tokens in crypto.lua.
-local API_URL   = "https://REPLACE_WITH_API_HOST/v1"
-local API_TOKEN = "REPLACE_WITH_ROTATED_ADMIN_API_TOKEN"
+-- Uses the shared API key configured once in crypto.lua.
+local API_URL   = crypto.API_URL
+local API_TOKEN = crypto.API_TOKEN
 -- ====================================================
 
 -- Stellen sicher, dass alle Modems (Kabel/Funk) aktiviert sind
@@ -52,8 +52,7 @@ end
 
 local function makeApiRequest(url, method)
     if not http then return nil, "HTTP-API auf diesem Rechner deaktiviert!" end
-    if not url:match("^https://") then return nil, "API-Aufrufe müssen HTTPS verwenden." end
-    if API_TOKEN == "" or API_TOKEN == "REPLACE_WITH_ROTATED_ADMIN_API_TOKEN" then
+    if API_TOKEN == "" or API_TOKEN == "REPLACE_WITH_SHARED_API_TOKEN" then
         return nil, "API-Token nicht konfiguriert; Anfrage verweigert."
     end
 
@@ -285,7 +284,7 @@ local function manageKMS()
     local choice = read()
 
     if choice == "1" then
-        local res, err = makeApiRequest(API_URL .. "/networks/" .. netName .. "/devices", "GET")
+        local res, err = makeApiRequest(API_URL .. "networks/" .. netName .. "/devices", "GET")
         if res and res.authorized_devices then
             term.setTextColor(colors.lime)
             print("\nRegistrierte IDs in " .. netName .. ":")
@@ -301,7 +300,7 @@ local function manageKMS()
     elseif choice == "2" then
         write("Aktivierungs-ID eingeben: ")
         local devId = read()
-        local res, err = makeApiRequest(API_URL .. "/networks/" .. netName .. "/devices/" .. devId, "POST")
+        local res, err = makeApiRequest(API_URL .. netName .. "/devices/" .. devId, "POST")
         if res then
             term.setTextColor(colors.green)
             print("\n[✓] " .. tostring(res.message or "Anfrage erfolgreich."))
@@ -320,7 +319,7 @@ local function manageKMS()
     elseif choice == "3" then
         write("Zu sperrende ID eingeben: ")
         local devId = read()
-        local res, err = makeApiRequest(API_URL .. "/networks/" .. netName .. "/devices/" .. devId, "DELETE")
+        local res, err = makeApiRequest(API_URL .. "networks/" .. netName .. "/devices/" .. devId, "DELETE")
         if res then
             term.setTextColor(colors.green)
             print("\n[✓] " .. tostring(res.message))
@@ -331,7 +330,7 @@ local function manageKMS()
 
     elseif choice == "4" then
         print("\nRotieren...")
-        local res, err = makeApiRequest(API_URL .. "/rotate/" .. netName, "POST")
+        local res, err = makeApiRequest(API_URL .. "rotate/" .. netName, "POST")
         if res then
             term.setTextColor(colors.green)
             print("\n[✓] " .. tostring(res.message))

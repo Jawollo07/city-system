@@ -14,7 +14,7 @@
 ## Required deployment configuration
 
 1. Rotate/revoke the previously committed token `SuperSecretDeviceToken_2026` on the API immediately. Assume it is compromised even if it was only intended as a placeholder.
-2. Configure a unique API token for every device in `admin.lua` and `crypto.lua.txt`; do not commit real tokens.
+2. Generate one random `API_TOKEN`, configure it on the KMS server and in `crypto.lua`, and do not commit it. `admin.lua` reads the same key from `crypto.lua`.
 3. Set `ADMIN_IDS` in `server.lua` to the real computer IDs running `admin.lua` and `sec_server.lua`. Until then all admin operations are intentionally denied.
 4. Set `FLOOR_ID` in each `relay.lua` to match the floor's `relayID` in `db.lua` (the current defaults map floor IDs 0–3 to relay IDs 10–13).
 5. Verify that the DB server is actually computer ID 19 and Keller-Server is ID 18. Update `KELLER_SERVER_ID` and other ID constants if the real topology differs.
@@ -28,7 +28,7 @@ Before merging for real access control, replace this module with a reviewed cryp
 
 ## API review status
 
-The Lua clients reference an HTTP API at `/v1/keys/`, `/networks/`, and `/rotate/`. The API server implementation itself was not identifiable among the repository files accessible in this review, so API-side authorization, token storage, key rotation, rate limiting, TLS configuration, and request validation remain unverified. This PR is therefore a draft and must not be considered a complete end-to-end API audit.
+The API implementation is in `crypto-server/app.py`. All routes require one shared Bearer `API_TOKEN`; device key retrieval additionally checks the device's network membership. This deliberately gives every client holding the key administrative access to enrollment and key rotation. Deployment still requires protecting the shared key and using a TLS reverse proxy for remote access. This is not a complete end-to-end security audit: the Lua client still uses RC4, a custom non-cryptographic MAC, and `math.random` for nonces, as described above.
 
 ## Test checklist
 
@@ -39,5 +39,7 @@ The Lua clients reference an HTTP API at `/v1/keys/`, `/networks/`, and `/rotate
 - [ ] Send a trigger from a non-server computer; relay must stay off.
 - [ ] Send a trigger for the wrong floor; relay must stay off.
 - [ ] Simulate API outage and missing token; no fallback key must be used.
+- [ ] Verify the same API key works for admin operations and key retrieval, while missing/incorrect keys are rejected.
+- [ ] Confirm network membership still restricts key retrieval when a device ID is not authorized.
 - [ ] Complete cryptographic replacement and test interoperability across every device.
-- [ ] Review the API server source and its tests before merging.
+- [ ] Verify TLS reverse-proxy configuration before remote access.

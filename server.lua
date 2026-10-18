@@ -68,7 +68,6 @@ local function updateDisplay()
     term.setTextColor(colors.white)
     print(" Server-ID: " .. os.getComputerID())
     print(" DB-Server-ID: " .. DB_SERVER_ID)
-    print(" Crypto-HSM ID: " .. crypto.CRYPTO_SERVER_ID)
 
     if isLockdown then
         term.setTextColor(colors.red)

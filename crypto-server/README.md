@@ -2,10 +2,9 @@
 
 ## Security configuration
 
-The service refuses to start unless `API_TOKEN` is set to a random admin secret of at least 32 characters. It has no default admin credential.
+The service refuses to start unless `API_TOKEN` is set to a random secret of at least 32 characters. Generate one with `python -c "import secrets; print(secrets.token_urlsafe(48))"`. Configure this same key as `API_TOKEN` in `crypto.lua`; `admin.lua` reads it from that module. Never commit the real key.
 
-- `API_TOKEN`: admin-only credential for device management and manual key rotation.
-- `DEVICE_TOKENS_JSON`: optional initial seed mapping of each ComputerCraft computer ID to its own random token. It is imported into the database once on first initialization; later changes to this variable do not re-add revoked credentials. The same token must be configured on that computer in `crypto.lua.txt`.
+- `API_TOKEN`: the shared Bearer key for key retrieval, device management, and manual key rotation.
 - `NETWORK_CONFIG_JSON`: maps network labels (the CC computer label is used as the network name) to allowed computer IDs.
 - `DB_PATH`: path to persistent SQLite runtime state; use a persistent volume such as `/data/keys.db`.
 - `ROTATION_INTERVAL_HOURS`: key rotation interval (1–8760 hours).
@@ -14,9 +13,9 @@ Copy `.env.example` to a private `.env`, replace every placeholder with random s
 
 ## Device enrollment
 
-The admin API can list, authorize, and revoke devices under `/v1/networks/{network}/devices`. When a device has no credential yet, the POST endpoint returns a newly generated `device_token` **once**. Copy it securely to that computer's `crypto.lua.txt` as its `API_TOKEN`. The token is not stored in plaintext in SQLite. If a device already has a credential, the API does not reveal it again.
+The admin API can list, authorize, and revoke network membership under `/v1/networks/{network}/devices`. Every route uses the same `Authorization: Bearer <API_TOKEN>` header. Enrollment only grants network membership; it does not create or return per-device credentials.
 
-A device must be a member of the requested network and present its own Bearer token. The admin device list includes only devices that have both a network membership and an active credential. The `User-Agent` computer ID is only a lookup hint, not proof of identity. Do not reuse the admin token on CC computers.
+A device must be listed as a member of the requested network and present the shared Bearer key. The `User-Agent` computer ID selects the membership row; it is not proof of identity. Because this key also permits device management and key rotation, copying it to every CC computer means compromise of any one computer grants full API access. Use TLS for remote API access and protect the shared key accordingly.
 
 ## Deployment
 
