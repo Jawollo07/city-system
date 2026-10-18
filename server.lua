@@ -187,23 +187,32 @@ while true do
                 if packed then rednet.send(senderID, packed, PROTOCOL) end
 
             elseif cmd == "TOGGLE_FLOOR" then
-                queryDB({ cmd = "DB_SET_FLOOR_LOCK", floorId = payload.floorId, state = payload.state })
-                local packed = crypto.encrypt({ status = "OK" })
+                local dbReply, dbErr = queryDB({ cmd = "DB_SET_FLOOR_LOCK", floorId = payload.floorId, state = payload.state })
+                local response = dbReply and dbReply.status == "OK"
+                    and { status = "OK" }
+                    or { status = "ERROR", msg = tostring(dbErr or (dbReply and dbReply.msg) or "Datenbankänderung fehlgeschlagen") }
+                local packed = crypto.encrypt(response)
                 if packed then rednet.send(senderID, packed, PROTOCOL) end
 
             elseif cmd == "SET_CLEARANCE" then
-                queryDB({ cmd = "DB_SET_FLOOR_CLEARANCE", floorId = payload.floorId, level = payload.level })
-                local packed = crypto.encrypt({ status = "OK" })
+                local dbReply, dbErr = queryDB({ cmd = "DB_SET_FLOOR_CLEARANCE", floorId = payload.floorId, level = payload.level })
+                local response = dbReply and dbReply.status == "OK"
+                    and { status = "OK" }
+                    or { status = "ERROR", msg = tostring(dbErr or (dbReply and dbReply.msg) or "Datenbankänderung fehlgeschlagen") }
+                local packed = crypto.encrypt(response)
                 if packed then rednet.send(senderID, packed, PROTOCOL) end
 
             elseif cmd == "DB_SET_KEYCARD" then
-                queryDB({
+                local dbReply, dbErr = queryDB({
                     cmd = "DB_SET_KEYCARD",
                     cardId = payload.cardId,
                     owner = payload.owner,
                     level = payload.level
                 })
-                local packed = crypto.encrypt({ status = "OK" })
+                local response = dbReply and dbReply.status == "OK"
+                    and { status = "OK" }
+                    or { status = "ERROR", msg = tostring(dbErr or (dbReply and dbReply.msg) or "Keycard-Speichern fehlgeschlagen") }
+                local packed = crypto.encrypt(response)
                 if packed then rednet.send(senderID, packed, PROTOCOL) end
             end
             end -- ADMIN_COMMANDS authorization gate
