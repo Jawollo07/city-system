@@ -15,6 +15,7 @@ local crypto = require("crypto")
 local PROTOCOL   = "GEBAEUDE-1-SEC"
 local DATA_FILE  = "db_data.txt"
 local LOG_FILE   = "system_logs.txt"
+local KELLER_SERVER_ID = 18 -- only this server may issue DB commands
 -- ====================================================
 
 -- Modems initialisieren (Funk & Kabel)
@@ -122,6 +123,9 @@ while true do
     local senderID, encryptedMessage, protocol = rednet.receive(PROTOCOL)
 
     if protocol == PROTOCOL and encryptedMessage ~= nil then
+        if senderID ~= KELLER_SERVER_ID then
+            addLog("SECURITY", "DB-Anfrage von nicht freigegebener Computer-ID " .. tostring(senderID) .. " abgelehnt")
+        else
         -- Paket über Crypto-HSM entschlüsseln
         local payload, err = crypto.decrypt(encryptedMessage)
 
@@ -155,11 +159,12 @@ while true do
             -- ================================================
             elseif cmd == "DB_SET_KEYCARD" then
                 local cardId = payload.cardId
-                if cardId and cardId ~= "" then
-                    db.keycards[cardId] = {
-                        owner = payload.owner or "Unbekannt",
-                        level = tonumber(payload.level) or 0
-                    }
+                local owner = payload.owner
+                local level = tonumber(payload.level)
+                if type(cardId) == "string" and #cardId > 0 and #cardId <= 64
+                    and type(owner) == "string" and #owner <= 80
+                    and level and level == math.floor(level) and level >= 0 and level <= 5 then
+                    db.keycards[cardId] = { owner = owner ~= "" and owner or "Unbekannt", level = level }
                     saveDB()
                     addLog("ADMIN", string.format("Keycard '%s' gespeichert (Besitzer: %s, Level: %d)", cardId, db.keycards[cardId].owner, db.keycards[cardId].level))
                     responsePayload = { status = "OK" }
@@ -187,7 +192,8 @@ while true do
             elseif cmd == "DB_SET_FLOOR_CLEARANCE" then
                 local floorId = tonumber(payload.floorId)
                 local level   = tonumber(payload.level)
-                if floorId and db.etagen[floorId] and level then
+                if floorId and db.etagen[floorId] and level
+                    and level == math.floor(level) and level >= 0 and level <= 5 then
                     db.etagen[floorId].clearance = level
                     saveDB()
                     addLog("ADMIN", string.format("Etage %d clearance geändert auf Level: %d", floorId, level))
@@ -212,5 +218,6 @@ while true do
                 end
             end
         end
+        end -- KELLER_SERVER_ID gate
     end
 end

@@ -5,8 +5,10 @@ local crypto = require("crypto")
 
 -- ================= CONFIGURATION ====================
 local PROTOCOL = "GEBAEUDE-1-SEC"
-local REDSTONE_SIDE = "bottom"   -- ⚙️ Anpassen!
-local PULSE_TIME = 18          -- Sekunden
+local SERVER_ID = 18 -- only accept relay triggers from the Keller-Server
+local FLOOR_ID = 0   -- configure per relay: 0=ground, 1=first floor, etc.
+local REDSTONE_SIDE = "bottom"
+local PULSE_TIME = 18
 
 -- ====================================================
 crypto.ensureRednet()
@@ -49,19 +51,20 @@ while true do
     if protocol == PROTOCOL and encryptedMessage then
         local payload, err = crypto.decrypt(encryptedMessage)
 
-        if payload and payload.cmd == "TRIGGER_RELAY" then
-            local targetFloor = payload.floor or "?"
-
-            redstone.setOutput(REDSTONE_SIDE, true)
-            updateDisplay(true, targetFloor)
-
-            sleep(PULSE_TIME)
-
-            redstone.setOutput(REDSTONE_SIDE, false)
-            updateDisplay(false, targetFloor)
-
-            -- Optional: Log an Server senden
-            -- crypto.encrypt({cmd = "DB_ADD_LOG", category = "RELAY", msg = "Impuls für Etage "..targetFloor.." ausgeführt"})
+        if senderID ~= SERVER_ID then
+            print("Sicherheitswarnung: Relay-Befehl von nicht freigegebener ID " .. tostring(senderID))
+        elseif payload and payload.cmd == "TRIGGER_RELAY" then
+            local targetFloor = payload.floor
+            if type(targetFloor) ~= "number" or targetFloor ~= FLOOR_ID then
+                print("Sicherheitswarnung: falsche Ziel-Etage; Relay bleibt aus.")
+            else
+                redstone.setOutput(REDSTONE_SIDE, true)
+                updateDisplay(true, targetFloor)
+                local ok, err = pcall(sleep, PULSE_TIME)
+                redstone.setOutput(REDSTONE_SIDE, false)
+                updateDisplay(false, targetFloor)
+                if not ok then print("Relay-Impulsfehler: " .. tostring(err)) end
+            end
         else
             if err then
                 print("Decrypt-Fehler: " .. tostring(err))
