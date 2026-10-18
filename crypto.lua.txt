@@ -109,7 +109,9 @@ end
 ----------------------------------------------------
 -- 3. HAUPTFUNKTIONEN (ENCRYPT / DECRYPT)
 ----------------------------------------------------
-local seenNonces = {} -- Cache für den Replay-Schutz
+local seenNonces = {} -- Replay-Cache, begrenzt gegen unbegrenztes RAM-Wachstum
+local nonceOrder = {}
+local MAX_SEEN_NONCES = 512
 
 --- Verschlüsselt die Daten lokal (Encrypt-then-MAC)
 function crypto.encrypt(payload)
@@ -143,11 +145,16 @@ function crypto.decrypt(packet)
     -- Fallback, falls das Paket direkt als rednet Message-Tabelle übergeben wurde
     if type(packet) == "table" and packet.cipherText then packet = packet.cipherText end
 
-    if type(packet) ~= "table" or not packet.hmac then
-        return nil, "Ungueltiges Paketformat (Kein sicheres E2EE-Paket)"
+    if type(packet) ~= "table"
+        or type(packet.ts) ~= "number"
+        or type(packet.nonce) ~= "string"
+        or #packet.nonce ~= 16
+        or type(packet.enc) ~= "string"
+        or type(packet.hmac) ~= "string" then
+        return nil, "Ungültiges Paketformat."
     end
 
-    -- A. Replay-Schutz: Alter prüfen (Max 5 Sekunden Abweichung)
+    -- A. Replay-Schutz: Zeitfenster validieren.
     local now = os.epoch("utc")
     if math.abs(now - packet.ts) > 5000 then
         return nil, "Paket verworfen: Zu alt (Replay-Angriff?)"
@@ -182,6 +189,11 @@ function crypto.decrypt(packet)
 
     -- E. Nachricht als gültig markieren & Entschlüsseln
     seenNonces[packet.nonce] = true
+    nonceOrder[#nonceOrder + 1] = packet.nonce
+    if #nonceOrder > MAX_SEEN_NONCES then
+        local expired = table.remove(nonceOrder, 1)
+        seenNonces[expired] = nil
+    end
     local decryptedStr = cipherRC4(SESSION_KEY .. packet.nonce, packet.enc)
     local decoded = textutils.unserialize(decryptedStr)
     if type(decoded) ~= "table" then return nil, "Entschlüsselte Nachricht ist ungültig." end
