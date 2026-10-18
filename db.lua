@@ -15,6 +15,7 @@ local crypto = require("crypto")
 local PROTOCOL   = "GEBAEUDE-1-SEC"
 local DATA_FILE  = "db_data.txt"
 local LOG_FILE   = "system_logs.txt"
+local KELLER_SERVER_ID = 18 -- only this server may issue DB commands
 -- ====================================================
 
 -- Modems initialisieren (Funk & Kabel)
@@ -122,6 +123,9 @@ while true do
     local senderID, encryptedMessage, protocol = rednet.receive(PROTOCOL)
 
     if protocol == PROTOCOL and encryptedMessage ~= nil then
+        if senderID ~= KELLER_SERVER_ID then
+            addLog("SECURITY", "DB-Anfrage von nicht freigegebener Computer-ID " .. tostring(senderID) .. " abgelehnt")
+        else
         -- Paket über Crypto-HSM entschlüsseln
         local payload, err = crypto.decrypt(encryptedMessage)
 
@@ -212,5 +216,6 @@ while true do
                 end
             end
         end
+        end -- KELLER_SERVER_ID gate
     end
 end
