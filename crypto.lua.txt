@@ -9,17 +9,21 @@ local crypto = {}
 -- KONFIGURATION
 ----------------------------------------------------
 local API_URL      = "https://mc-cc.mcjj.de/v1/keys/"
-local API_TOKEN    = "SuperSecretDeviceToken_2026"
-local NETWORK_NAME = os.getComputerLabel() or "DEFAULT_NET"
-local FALLBACK_KEY = "Notfall_Offline_Schluessel_123"
+-- Rotate the previously committed token; configure a unique token per device.
+local API_TOKEN    = "REPLACE_WITH_ROTATED_PER_DEVICE_TOKEN"
+local NETWORK_NAME = os.getComputerLabel() or "UNCONFIGURED_NETWORK"
 
 ----------------------------------------------------
 -- 1. SCHLÜSSEL-VERWALTUNG (HTTP API)
 ----------------------------------------------------
 local function fetchKey()
     if not http then
-        print("[Crypto] WARNUNG: HTTP-API ist nicht aktiviert. Nutze Fallback-Key.")
-        return FALLBACK_KEY
+        print("[Crypto] FEHLER: HTTP-API deaktiviert; unsicherer Fallback verweigert.")
+        return nil
+    end
+    if API_TOKEN == "" or API_TOKEN == "REPLACE_WITH_ROTATED_PER_DEVICE_TOKEN" then
+        print("[Crypto] FEHLER: API-Token nicht konfiguriert.")
+        return nil
     end
 
     local myID = tostring(os.getComputerID())
@@ -29,8 +33,12 @@ local function fetchKey()
         ["Accept"]        = "application/json"
     }
 
-    local response = http.get(API_URL .. NETWORK_NAME, headers)
-    if response then
+    if not API_URL:match("^https://") then
+        print("[Crypto] FEHLER: Schlüssel-API muss HTTPS verwenden.")
+        return nil
+    end
+    local ok, response = pcall(http.get, API_URL .. NETWORK_NAME, headers)
+    if ok and response then
         local body = response.readAll()
         response.close()
 
@@ -39,12 +47,19 @@ local function fetchKey()
             return data.key
         end
     end
-    print("[Crypto] WARNUNG: API nicht erreichbar. Nutze Fallback-Key.")
-    return FALLBACK_KEY
+    print("[Crypto] FEHLER: API nicht erreichbar; kein Fallback-Schlüssel.")
+    return nil
 end
 
 -- Holt den Key beim Laden des Moduls und speichert ihn im RAM
 local SESSION_KEY = fetchKey()
+
+local function requireSessionKey()
+    if type(SESSION_KEY) ~= "string" or #SESSION_KEY < 16 then
+        return nil, "Kein gültiger Sitzungsschlüssel verfügbar; Anfrage wird abgebrochen."
+    end
+    return SESSION_KEY
+end
 
 ----------------------------------------------------
 -- 2. KRYPTO-HILFSFUNKTIONEN (RC4 & HMAC)
@@ -98,16 +113,19 @@ local seenNonces = {} -- Cache für den Replay-Schutz
 
 --- Verschlüsselt die Daten lokal (Encrypt-then-MAC)
 function crypto.encrypt(payload)
+    local key, keyErr = requireSessionKey()
+    if not key then return nil, keyErr end
+    if type(payload) ~= "table" then return nil, "Payload muss eine Tabelle sein." end
     local serialized = textutils.serialize(payload)
     local nonce = generateNonce()
     local timestamp = os.epoch("utc")
 
     -- 1. Verschlüsseln
-    local encryptedData = cipherRC4(SESSION_KEY .. nonce, serialized)
+    local encryptedData = cipherRC4(key .. nonce, serialized)
 
     -- 2. Signieren (HMAC)
     local checkString = tostring(timestamp) .. nonce .. encryptedData
-    local hmac = generateHMAC(SESSION_KEY, checkString)
+    local hmac = generateHMAC(key, checkString)
 
     return {
         v = 1,
@@ -120,6 +138,8 @@ end
 
 --- Entschlüsselt und prüft die Integrität lokal inkl. Auto-Recovery
 function crypto.decrypt(packet)
+    local key, keyErr = requireSessionKey()
+    if not key then return nil, keyErr end
     -- Fallback, falls das Paket direkt als rednet Message-Tabelle übergeben wurde
     if type(packet) == "table" and packet.cipherText then packet = packet.cipherText end
 
@@ -146,6 +166,9 @@ function crypto.decrypt(packet)
     if packet.hmac ~= expectedHMAC then
         print("[Crypto] HMAC-Fehler. Versuche neuen Key von API abzurufen...")
         local newKey = fetchKey()
+        if type(newKey) ~= "string" or #newKey < 16 then
+            return nil, "Paket verworfen: API liefert keinen gültigen Schlüssel."
+        end
 
         -- Erneuter Versuch mit dem frisch abgerufenen Key
         local newExpectedHMAC = generateHMAC(newKey, checkString)
@@ -160,7 +183,9 @@ function crypto.decrypt(packet)
     -- E. Nachricht als gültig markieren & Entschlüsseln
     seenNonces[packet.nonce] = true
     local decryptedStr = cipherRC4(SESSION_KEY .. packet.nonce, packet.enc)
-    return textutils.unserialize(decryptedStr)
+    local decoded = textutils.unserialize(decryptedStr)
+    if type(decoded) ~= "table" then return nil, "Entschlüsselte Nachricht ist ungültig." end
+    return decoded
 end
 
 ----------------------------------------------------
