@@ -16,8 +16,9 @@ local PROTOCOL  = "GEBAEUDE-1-SEC"
 local SERVER_ID = 18  -- ⚙️ Computer-ID deines Keller-Servers (server.lua)
 
 -- API KMS Konfiguration
-local API_URL   = "http://DEINE_API_IP_ODER_DOMAIN:8000/v1"
-local API_TOKEN = "SuperSecretDeviceToken_2026"
+-- Replace with your real HTTPS API URL and a newly rotated per-device token.
+local API_URL   = "https://REPLACE_WITH_API_HOST/v1"
+local API_TOKEN = "REPLACE_WITH_ROTATED_PER_DEVICE_TOKEN"
 -- ====================================================
 
 -- Stellen sicher, dass alle Modems (Kabel/Funk) aktiviert sind
@@ -50,8 +51,10 @@ local function sendServer(payload)
 end
 
 local function makeApiRequest(url, method)
-    if not http then
-        return nil, "HTTP-API auf diesem Rechner deaktiviert!"
+    if not http then return nil, "HTTP-API auf diesem Rechner deaktiviert!" end
+    if not url:match("^https://") then return nil, "API-Aufrufe müssen HTTPS verwenden." end
+    if API_TOKEN == "" or API_TOKEN == "REPLACE_WITH_ROTATED_PER_DEVICE_TOKEN" then
+        return nil, "API-Token nicht konfiguriert; Anfrage verweigert."
     end
 
     local headers = {
@@ -68,13 +71,9 @@ local function makeApiRequest(url, method)
             p2.close()
             return textutils.unserializeJSON(body)
         elseif event == "http_failure" and p1 == url then
-            if p2 then
-                local body = p2.readAll()
-                p2.close()
-                local data = textutils.unserializeJSON(body)
-                return nil, data and data.detail or ("HTTP-Fehler " .. tostring(p2.getResponseCode()))
-            end
-            return nil, "API nicht erreichbar"
+            -- In CC:Tweaked, http_failure's second argument is usually an error string,
+            -- not a response handle. Never call readAll/getResponseCode on it.
+            return nil, "API-Anfrage fehlgeschlagen: " .. tostring(p2 or "unbekannter Fehler")
         end
     end
 end
