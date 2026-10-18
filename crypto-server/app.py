@@ -179,8 +179,9 @@ def list_devices(network_name: str, authorization: str = Header(None)):
     if not NETWORK_RE.fullmatch(network_name) or network_name not in NETWORK_CONFIG:
         raise HTTPException(status_code=404, detail="Netzwerk nicht gefunden")
     with db_connect() as conn:
-        rows = conn.execute("SELECT device_id FROM network_devices WHERE network_name=? ORDER BY CAST(device_id AS INTEGER)",
-                            (network_name,)).fetchall()
+        rows = conn.execute("""SELECT n.device_id FROM network_devices n
+            JOIN device_credentials c ON c.device_id=n.device_id
+            WHERE n.network_name=? ORDER BY CAST(n.device_id AS INTEGER)""", (network_name,)).fetchall()
     return {"network": network_name, "authorized_devices": [row["device_id"] for row in rows]}
 
 
@@ -192,8 +193,9 @@ def get_device(network_name: str, device_id: str, authorization: str = Header(No
     if not ID_RE.fullmatch(device_id):
         raise HTTPException(status_code=400, detail="Ungültige Computer-ID")
     with db_connect() as conn:
-        row = conn.execute("SELECT 1 FROM network_devices WHERE network_name=? AND device_id=?",
-                           (network_name, device_id)).fetchone()
+        row = conn.execute("""SELECT 1 FROM network_devices n
+            JOIN device_credentials c ON c.device_id=n.device_id
+            WHERE n.network_name=? AND n.device_id=?""", (network_name, device_id)).fetchone()
     return {"network": network_name, "device_id": device_id, "authorized": row is not None}
 
 
