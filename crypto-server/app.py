@@ -109,17 +109,18 @@ def generate_and_store_key(network_name: str):
 
 async def key_rotation_task():
     while True:
-        with db_connect() as conn:
-            cursor = conn.cursor()
-            cursor.execute(f"""
-                SELECT network_name FROM network_keys
-                WHERE created_at <= datetime('now', '-{ROTATION_INTERVAL_HOURS} hours')
-            """)
-            expired_networks = cursor.fetchall()
-
-        for (net,) in expired_networks:
-            generate_and_store_key(net)
-
+        try:
+            with db_connect() as conn:
+                expired_networks = conn.execute(
+                    "SELECT network_name FROM network_keys WHERE created_at <= datetime('now', ?)",
+                    (f"-{ROTATION_INTERVAL_HOURS} hours",),
+                ).fetchall()
+            for row in expired_networks:
+                generate_and_store_key(row["network_name"])
+        except asyncio.CancelledError:
+            raise
+        except sqlite3.Error:
+            logger.exception("Scheduled key rotation failed; will retry next hour")
         await asyncio.sleep(3600)
 
 @asynccontextmanager
@@ -161,10 +162,12 @@ def get_network_key(
     cc_id = match.group(1)
     require_device(network_name, cc_id, authorization)
 
-    with sqlite3.connect(DB_PATH) as conn:
-        cursor = conn.cursor()
-        cursor.execute("SELECT current_key FROM network_keys WHERE network_name = ?", (network_name,))
-        result = cursor.fetchone()
+    try:
+        with db_connect() as conn:
+            result = conn.execute("SELECT current_key FROM network_keys WHERE network_name = ?", (network_name,)).fetchone()
+    except sqlite3.Error as exc:
+        logger.exception("Key lookup failed")
+        raise HTTPException(status_code=503, detail="Key store unavailable") from exc
 
     if not result:
         raise HTTPException(status_code=503, detail="Netzwerkschlüssel nicht initialisiert")
