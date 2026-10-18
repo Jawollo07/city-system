@@ -149,7 +149,7 @@ while true do
                     elseif not target then
                         responsePayload = { status = "DENIED", msg = "Ziel-Etage existiert nicht!" }
                     elseif target.locked then
-                        logToDB("ACCESS_DENIED", string.format("Gesperrt: %s -> Etage %d", cardOwner, targetFloor))
+                        logToDB("ACCESS_DENIED", string.format("Gesperrt: %s -> Etage %d", tostring(cardReply.owner or "Unbekannt"), targetFloor))
                         responsePayload = { status = "DENIED", msg = "Etage ist derzeit gesperrt." }
                     elseif cardReply.level < (target.clearance or 0) then
                         logToDB("ACCESS_DENIED", string.format("Rechte fehlen: %s (Lvl %d) -> Etage %d", tostring(cardReply.owner or "Unbekannt"), cardReply.level, targetFloor))
@@ -166,7 +166,8 @@ while true do
 
                     local packed = crypto.encrypt(responsePayload)
                     if packed then rednet.send(senderID, packed, PROTOCOL) end
-                end
+                    end -- targetFloor validation branch
+                end -- lockdown branch
 
             -- Administrative Commands
             elseif cmd == "SET_LOCKDOWN" then
