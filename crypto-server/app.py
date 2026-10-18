@@ -84,9 +84,12 @@ def init_db():
             network_name TEXT NOT NULL, device_id TEXT NOT NULL,
             PRIMARY KEY(network_name, device_id))""")
         conn.execute("CREATE TABLE IF NOT EXISTS app_metadata (key TEXT PRIMARY KEY, value TEXT NOT NULL)")
-        for device_id, token in DEVICE_TOKENS.items():
-            conn.execute("INSERT OR IGNORE INTO device_credentials(device_id, token_hash) VALUES (?, ?)",
-                         (device_id, token_hash(token)))
+        seeded_tokens = conn.execute("SELECT value FROM app_metadata WHERE key='device_tokens_seeded'").fetchone()
+        if seeded_tokens is None:
+            for device_id, token in DEVICE_TOKENS.items():
+                conn.execute("INSERT OR IGNORE INTO device_credentials(device_id, token_hash) VALUES (?, ?)",
+                             (device_id, token_hash(token)))
+            conn.execute("INSERT INTO app_metadata(key, value) VALUES ('device_tokens_seeded', '1')")
         seeded = conn.execute("SELECT value FROM app_metadata WHERE key='network_config_seeded'").fetchone()
         if seeded is None:
             for network_name, device_ids in NETWORK_CONFIG.items():
