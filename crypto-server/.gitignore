@@ -1,0 +1,12 @@
+# Runtime state and secrets
+keys.db
+keys.db-*
+*.sqlite
+*.sqlite3
+.env
+.env.*
+!.env.example
+__pycache__/
+*.py[cod]
+.venv/
+venv/

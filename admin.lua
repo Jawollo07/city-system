@@ -16,9 +16,9 @@ local PROTOCOL  = "GEBAEUDE-1-SEC"
 local SERVER_ID = 18  -- ⚙️ Computer-ID deines Keller-Servers (server.lua)
 
 -- API KMS Konfiguration
--- Replace with your real HTTPS API URL and a newly rotated per-device token.
+-- Admin-only KMS token; keep this separate from the per-device tokens in crypto.lua.
 local API_URL   = "https://REPLACE_WITH_API_HOST/v1"
-local API_TOKEN = "REPLACE_WITH_ROTATED_PER_DEVICE_TOKEN"
+local API_TOKEN = "REPLACE_WITH_ROTATED_ADMIN_API_TOKEN"
 -- ====================================================
 
 -- Stellen sicher, dass alle Modems (Kabel/Funk) aktiviert sind
@@ -53,7 +53,7 @@ end
 local function makeApiRequest(url, method)
     if not http then return nil, "HTTP-API auf diesem Rechner deaktiviert!" end
     if not url:match("^https://") then return nil, "API-Aufrufe müssen HTTPS verwenden." end
-    if API_TOKEN == "" or API_TOKEN == "REPLACE_WITH_ROTATED_PER_DEVICE_TOKEN" then
+    if API_TOKEN == "" or API_TOKEN == "REPLACE_WITH_ROTATED_ADMIN_API_TOKEN" then
         return nil, "API-Token nicht konfiguriert; Anfrage verweigert."
     end
 
@@ -304,7 +304,14 @@ local function manageKMS()
         local res, err = makeApiRequest(API_URL .. "/networks/" .. netName .. "/devices/" .. devId, "POST")
         if res then
             term.setTextColor(colors.green)
-            print("\n[✓] " .. tostring(res.message))
+            print("\n[✓] " .. tostring(res.message or "Anfrage erfolgreich."))
+            if res.device_token then
+                term.setTextColor(colors.yellow)
+                print("\nNEUES GERÄTE-TOKEN (wird nur einmal angezeigt):")
+                print(res.device_token)
+                print("Jetzt sicher auf Computer-ID " .. tostring(devId) .. " hinterlegen.")
+                print("Nicht teilen und nicht in Git committen.")
+            end
         else
             term.setTextColor(colors.red)
             print("\n[X] Fehler: " .. tostring(err))
