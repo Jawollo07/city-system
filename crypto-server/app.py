@@ -17,8 +17,8 @@ logging.basicConfig(level=os.getenv("LOG_LEVEL", "INFO"))
 logger = logging.getLogger("crypto_server")
 # API_TOKEN is an admin-only secret; never ship a default secret in source.
 API_TOKEN = os.getenv("API_TOKEN", "")
-if len(API_TOKEN) < 32:
-    raise RuntimeError("Set API_TOKEN to a random admin secret of at least 32 characters")
+if len(API_TOKEN) < 32 or API_TOKEN.startswith("REPLACE_WITH_"):
+    raise RuntimeError("Set API_TOKEN to a real random admin secret of at least 32 characters; placeholders are rejected")
 DB_PATH = os.getenv("DB_PATH", "keys.db")
 ROTATION_INTERVAL_HOURS = int(os.getenv("ROTATION_INTERVAL_HOURS", "24"))
 if not 1 <= ROTATION_INTERVAL_HOURS <= 8760:
@@ -253,8 +253,12 @@ def force_key_rotation(
     if not NETWORK_RE.fullmatch(network_name) or network_name not in NETWORK_CONFIG:
         raise HTTPException(status_code=404, detail="Netzwerk nicht gefunden")
 
-    # Überschreibt den aktuellen Key sofort
-    generate_and_store_key(network_name)
+    # Rotation is immediate; clients may need to refresh their in-memory key.
+    try:
+        generate_and_store_key(network_name)
+    except sqlite3.Error as exc:
+        logger.exception("Manual key rotation failed")
+        raise HTTPException(status_code=503, detail="Schlüsselrotation fehlgeschlagen") from exc
 
     return {"status": "success", "message": f"Schlüssel für {network_name} wurde rotiert."}
 if __name__ == "__main__":
