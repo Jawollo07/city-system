@@ -16,10 +16,14 @@ from dotenv import load_dotenv
 load_dotenv()
 logging.basicConfig(level=os.getenv("LOG_LEVEL", "INFO"))
 logger = logging.getLogger("crypto_server")
-# Shared API secret for admin and device requests; never ship a default secret in source.
-API_TOKEN = os.getenv("API_TOKEN", "")
-if len(API_TOKEN) < 32 or API_TOKEN.startswith("REPLACE_WITH_"):
-    raise RuntimeError("Set API_TOKEN to a real random secret of at least 32 characters; placeholders are rejected")
+# Separate device and admin secrets; never ship live credentials in source.
+DEVICE_API_TOKEN = os.getenv("DEVICE_API_TOKEN", "")
+ADMIN_API_TOKEN = os.getenv("ADMIN_API_TOKEN", "")
+for name, token in (("DEVICE_API_TOKEN", DEVICE_API_TOKEN), ("ADMIN_API_TOKEN", ADMIN_API_TOKEN)):
+    if len(token) < 32 or token.startswith("REPLACE_WITH_"):
+        raise RuntimeError(f"Set {name} to a real random secret of at least 32 characters; placeholders are rejected")
+if hmac.compare_digest(DEVICE_API_TOKEN, ADMIN_API_TOKEN):
+    raise RuntimeError("DEVICE_API_TOKEN and ADMIN_API_TOKEN must be different secrets")
 DB_PATH = os.getenv("DB_PATH", "keys.db")
 ROTATION_INTERVAL_HOURS = int(os.getenv("ROTATION_INTERVAL_HOURS", "24"))
 if not 1 <= ROTATION_INTERVAL_HOURS <= 8760:
@@ -42,13 +46,14 @@ def db_connect():
     conn.execute("PRAGMA busy_timeout = 10000")
     return conn
 
-def require_api_token(authorization):
+def require_api_token(authorization, expected_token):
     scheme, sep, supplied = (authorization or "").partition(" ")
-    if scheme.lower() != "bearer" or not sep or not hmac.compare_digest(supplied, API_TOKEN):
+    if scheme.lower() != "bearer" or not sep or not hmac.compare_digest(supplied, expected_token):
         raise HTTPException(status_code=401, detail="Ungültiger API-Key")
 
 def require_device(network_name, device_id, authorization):
-    require_api_token(authorization)
+    # Device clients may retrieve keys only; they must not manage enrollment or rotation.
+    require_api_token(authorization, DEVICE_API_TOKEN)
     with db_connect() as conn:
         row = conn.execute(
             "SELECT 1 FROM network_devices WHERE device_id=? AND network_name=?",
@@ -160,7 +165,7 @@ def get_network_key(
 
 @app.get("/v1/networks/{network_name}/devices")
 def list_devices(network_name: str, authorization: str = Header(None)):
-    require_api_token(authorization)
+    require_api_token(authorization, ADMIN_API_TOKEN)
     if not NETWORK_RE.fullmatch(network_name) or network_name not in NETWORK_CONFIG:
         raise HTTPException(status_code=404, detail="Netzwerk nicht gefunden")
     with db_connect() as conn:
@@ -173,7 +178,7 @@ def list_devices(network_name: str, authorization: str = Header(None)):
 
 @app.get("/v1/networks/{network_name}/devices/{device_id}")
 def get_device(network_name: str, device_id: str, authorization: str = Header(None)):
-    require_api_token(authorization)
+    require_api_token(authorization, ADMIN_API_TOKEN)
     if not NETWORK_RE.fullmatch(network_name) or network_name not in NETWORK_CONFIG:
         raise HTTPException(status_code=404, detail="Netzwerk nicht gefunden")
     if not ID_RE.fullmatch(device_id):
@@ -188,7 +193,7 @@ def get_device(network_name: str, device_id: str, authorization: str = Header(No
 
 @app.post("/v1/networks/{network_name}/devices/{device_id}")
 def authorize_device(network_name: str, device_id: str, authorization: str = Header(None)):
-    require_api_token(authorization)
+    require_api_token(authorization, ADMIN_API_TOKEN)
     if not NETWORK_RE.fullmatch(network_name) or network_name not in NETWORK_CONFIG:
         raise HTTPException(status_code=404, detail="Netzwerk nicht gefunden")
     if not ID_RE.fullmatch(device_id):
@@ -202,7 +207,7 @@ def authorize_device(network_name: str, device_id: str, authorization: str = Hea
 
 @app.delete("/v1/networks/{network_name}/devices/{device_id}")
 def revoke_device(network_name: str, device_id: str, authorization: str = Header(None)):
-    require_api_token(authorization)
+    require_api_token(authorization, ADMIN_API_TOKEN)
     if not NETWORK_RE.fullmatch(network_name) or network_name not in NETWORK_CONFIG:
         raise HTTPException(status_code=404, detail="Netzwerk nicht gefunden")
     if not ID_RE.fullmatch(device_id):
@@ -222,7 +227,7 @@ def force_key_rotation(
     authorization: str = Header(None),
 ):
     """Erzwingt sofort die Generierung eines neuen Schlüssels für das gewählte Netzwerk."""
-    require_api_token(authorization)
+    require_api_token(authorization, ADMIN_API_TOKEN)
     if not NETWORK_RE.fullmatch(network_name) or network_name not in NETWORK_CONFIG:
         raise HTTPException(status_code=404, detail="Netzwerk nicht gefunden")
 
