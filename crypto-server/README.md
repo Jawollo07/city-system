@@ -5,7 +5,7 @@
 The service refuses to start unless `API_TOKEN` is set to a random admin secret of at least 32 characters. It has no default admin credential.
 
 - `API_TOKEN`: admin-only credential for device management and manual key rotation.
-- `DEVICE_TOKENS_JSON`: maps each ComputerCraft computer ID to its own random token. The same token must be configured on that computer in `crypto.lua.txt`.
+- `DEVICE_TOKENS_JSON`: optional initial seed mapping of each ComputerCraft computer ID to its own random token. It is imported into the database once on first initialization; later changes to this variable do not re-add revoked credentials. The same token must be configured on that computer in `crypto.lua.txt`.
 - `NETWORK_CONFIG_JSON`: maps network labels (the CC computer label is used as the network name) to allowed computer IDs.
 - `DB_PATH`: path to persistent SQLite runtime state; use a persistent volume such as `/data/keys.db`.
 - `ROTATION_INTERVAL_HOURS`: key rotation interval (1–8760 hours).
